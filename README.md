@@ -9,6 +9,15 @@ A framework-agnostic governance gateway for AI agents on Azure. Agents hold no c
 - [Architecture decision records](docs/adr/)
 - [Learning log](docs/learning-log.md)
 
+## Development
+
+Requires [uv](https://docs.astral.sh/uv/) and `make`.
+
+```
+make install   # install dependencies
+make check     # lint, type check and test: what CI runs
+```
+
 ## Licence
 
 [MIT](LICENSE)
