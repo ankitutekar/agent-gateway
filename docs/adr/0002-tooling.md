@@ -24,6 +24,7 @@ Supporting rules:
 
 - Dev tools are pinned to exact versions in `pyproject.toml`; the lockfile pins everything else.
 - GitHub Actions are pinned to commit SHAs (tag in a comment), so a moved or compromised tag cannot change what runs. Dependabot keeps the pins current.
+- CI runs on a pinned runner image (`ubuntu-24.04`, not `ubuntu-latest`), upgraded deliberately rather than when GitHub moves the label.
 - Workflows run with `contents: read` only, and checkout does not persist credentials.
 - Line endings are normalised to LF (`.gitattributes`), since CI and containers run on Linux.
 
