@@ -1,9 +1,7 @@
 name: CI
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  pull_request: # main only changes through PRs (branch ruleset), so pushes need no run
 
 permissions:
   contents: read

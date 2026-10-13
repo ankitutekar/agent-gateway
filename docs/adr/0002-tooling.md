@@ -28,9 +28,16 @@ Supporting rules:
 - Workflows run with `contents: read` only, and checkout does not persist credentials.
 - Line endings are normalised to LF (`.gitattributes`), since CI and containers run on Linux.
 
-## Deferred
+## Merge policy
 
-Which checks *block* a merge (branch protection) is not decided yet. Until it is, CI runs all checks but nothing is enforced on `main`.
+A repository ruleset on `main` (decided 2026-10-13):
+
+- Changes reach `main` only through pull requests; no direct pushes, force-pushes or branch deletion.
+- Both CI jobs ("Lint, typecheck, test" and "Secret scan") must pass before merging.
+- No review approval is required (a single maintainer cannot approve their own PRs).
+- No bypass, including for the repository admin, so the rules are real rather than advisory.
+
+CI runs on pull requests only. Since `main` changes only through PRs, a run on push would repeat work already done; `make check` is run locally before committing.
 
 ## Consequences
 
