@@ -1,0 +1,5 @@
+# Copy to backend.hcl (git-ignored) after the first apply, using the outputs.
+resource_group_name  = "rg-agentgw-bootstrap"
+storage_account_name = "stagentgwtfxxxxxx"
+container_name       = "tfstate"
+key                  = "bootstrap.tfstate"
