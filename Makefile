@@ -1,4 +1,6 @@
-.PHONY: help install fmt lint typecheck test check up down eval
+.PHONY: help install fmt lint typecheck test check tf-check up down eval
+
+TF_ROOTS := infra/bootstrap
 
 help:
 	@echo "install    install dependencies (uv sync)"
@@ -6,7 +8,8 @@ help:
 	@echo "lint       check formatting and lint"
 	@echo "typecheck  run pyright (strict)"
 	@echo "test       run tests"
-	@echo "check      lint + typecheck + test (what CI runs)"
+	@echo "tf-check   terraform fmt check + validate (no Azure access needed)"
+	@echo "check      lint + typecheck + test + tf-check (what CI runs)"
 
 install:
 	uv sync --locked
@@ -25,7 +28,14 @@ typecheck:
 test:
 	uv run pytest
 
-check: lint typecheck test
+tf-check:
+	terraform fmt -check -recursive infra
+	for root in $(TF_ROOTS); do \
+		terraform -chdir=$$root init -backend=false -input=false >/dev/null && \
+		terraform -chdir=$$root validate || exit 1; \
+	done
+
+check: lint typecheck test tf-check
 
 up down eval:
 	@echo "'$@' is not implemented yet"
