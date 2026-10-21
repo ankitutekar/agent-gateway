@@ -7,6 +7,7 @@ A framework-agnostic governance gateway for AI agents on Azure. Agents hold no c
 ## Documentation
 
 - [Architecture decision records](docs/adr/)
+- [Advent of Agents Season 3 mapping](docs/season3-mapping.md) (each lesson, its Azure counterpart and the step that covers it)
 
 ## Development
 
