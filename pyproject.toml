@@ -24,7 +24,7 @@ packages = ["src/agent_gateway"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", ".claude/hooks"]
 
 [tool.ruff.lint]
 select = [
@@ -42,7 +42,8 @@ select = [
 "tests/**" = ["S101"]  # assert is how pytest works
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", ".claude/hooks"]
+extraPaths = ["src", ".claude/hooks"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
@@ -50,4 +51,5 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = [".claude/hooks"]  # the coding-agent guard hook (ADR 0004)
 addopts = "-ra --strict-markers"

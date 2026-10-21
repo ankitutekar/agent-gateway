@@ -7,7 +7,6 @@ A framework-agnostic governance gateway for AI agents on Azure. Agents hold no c
 ## Documentation
 
 - [Architecture decision records](docs/adr/)
-- [Learning notes](docs/learning/) (concepts by topic, plus per-step reflections)
 
 ## Development
 
