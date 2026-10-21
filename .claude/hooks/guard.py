@@ -143,7 +143,10 @@ _WRAPPERS = {
     ".",
     "noglob",
     "builtin",
+    "busybox",
 }
+_FIND_EXEC = {"-exec", "-execdir", "-ok", "-okdir"}
+_EVALUATORS = {"eval", "iex", "invoke-expression"}
 
 _HEREDOC = re.compile(r"<<-?[ \t]*(['\"]?)([A-Za-z_]\w*)\1")
 _SUBSTITUTION = re.compile(r"\$\(((?:[^()]|\([^()]*\))*)\)|`([^`]*)`")
@@ -155,6 +158,9 @@ _SECRET_ENV_VAR = re.compile(
 )
 # Values of these flags are free text (commit messages, PR bodies), not paths.
 _MESSAGE_FLAGS = {"-m", "--message", "-b", "--body", "-t", "--title", "--notes"}
+# PowerShell's call operator on an expression: & (Get-Command az) login.
+_DYNAMIC_CALL = re.compile(r"(?<![&>\w])&\s*\(")
+_PIPED_INTO_SHELL = "Pipes text into a shell to run; the guard cannot check what it runs."
 
 
 def _program_name(token: str) -> str:
@@ -182,7 +188,7 @@ def _strip_heredocs(command: str) -> tuple[str, list[str]]:
         body_end = end.start() if end else len(command)
         line_start = command.rfind("\n", 0, match.start()) + 1
         feeder = _split_segments(command[line_start : match.start()])
-        feeder_tokens = _tokenize(feeder[-1]) if feeder else []
+        feeder_tokens = _tokenize(feeder[-1][0]) if feeder else []
         if feeder_tokens and _program_name(feeder_tokens[0]) in _SHELLS:
             shell_bodies.append(command[line_end + 1 : body_end])
         out.append(command[pos : line_end + 1])
@@ -191,11 +197,15 @@ def _strip_heredocs(command: str) -> tuple[str, list[str]]:
     return "".join(out), shell_bodies
 
 
-def _split_segments(text: str) -> list[str]:
-    """Split on command separators outside quotes: ; & | newline ( ) { } and backticks."""
-    segments: list[str] = []
+def _split_segments(text: str) -> list[tuple[str, bool]]:
+    """Split on command separators outside quotes: ; & | newline ( ) { } and backticks.
+
+    Each segment comes with a flag: True when a single | pipes the previous one into it.
+    """
+    segments: list[tuple[str, bool]] = []
     buf: list[str] = []
     quote: str | None = None
+    piped = False
     i = 0
     while i < len(text):
         char = text[i]
@@ -218,13 +228,14 @@ def _split_segments(text: str) -> list[str]:
             quote = char
             buf.append(char)
         elif char in ";&|\n(){}`":
-            segments.append("".join(buf))
+            segments.append(("".join(buf), piped))
             buf = []
+            piped = char == "|" and "|" not in (text[i - 1 : i], text[i + 1 : i + 2])
         else:
             buf.append(char)
         i += 1
-    segments.append("".join(buf))
-    return [s.strip() for s in segments if s.strip()]
+    segments.append(("".join(buf), piped))
+    return [(s.strip(), p) for s, p in segments if s.strip()]
 
 
 def _tokenize(segment: str) -> list[str]:
@@ -283,15 +294,17 @@ def check_shell(command: str, cwd: str | None = None, depth: int = 0) -> Decisio
         decisions.append(_deny("Reads an environment variable that looks like a secret."))
     if _GUARD_FILES.search(lowered):
         decisions.append(_ask("Touches the agent's own guardrails (.claude settings or hooks)."))
+    if _DYNAMIC_CALL.search(text):
+        decisions.append(_ask("Calls a command computed at run time; the guard cannot tell what."))
     for match in _SUBSTITUTION.finditer(text):
         inner = match.group(1) if match.group(1) is not None else match.group(2)
         decisions.append(check_shell(inner, cwd, depth + 1))
-    decisions.extend(_check_segment(s, cwd, depth) for s in _split_segments(text))
+    decisions.extend(_check_segment(s, cwd, depth, piped) for s, piped in _split_segments(text))
     decisions.extend(check_shell(body, cwd, depth + 1) for body in shell_bodies)
     return _worst(decisions)
 
 
-def _check_segment(segment: str, cwd: str | None, depth: int) -> Decision | None:
+def _check_segment(segment: str, cwd: str | None, depth: int, piped: bool) -> Decision | None:
     tokens = _tokenize(segment)
     if not tokens:
         return None
@@ -299,10 +312,12 @@ def _check_segment(segment: str, cwd: str | None, depth: int) -> Decision | None
     secret = _deny(f"Touches {label}; the agent never reads or writes secrets.") if label else None
     if any(t.lower().startswith("env:") for t in tokens):
         secret = _deny("Reads environment variables, which may hold secrets.")
-    return _worst([secret, _check_command(tokens, cwd, depth)])
+    return _worst([secret, _check_command(tokens, cwd, depth, piped)])
 
 
-def _check_command(tokens: list[str], cwd: str | None, depth: int) -> Decision | None:
+def _check_command(
+    tokens: list[str], cwd: str | None, depth: int, piped: bool = False
+) -> Decision | None:
     # Look through wrappers and variable assignments to the command that actually runs.
     while tokens:
         name = _program_name(tokens[0])
@@ -320,6 +335,11 @@ def _check_command(tokens: list[str], cwd: str | None, depth: int) -> Decision |
                 len(rest),
             )
             tokens = rest[start:]
+        elif name == "find" and _FIND_EXEC & {t.lower() for t in rest}:
+            # find -exec CMD ... ; runs CMD for each file: check CMD.
+            start = next(i for i, t in enumerate(rest) if t.lower() in _FIND_EXEC)
+            command = rest[start + 1 :]
+            tokens = command[: command.index(";")] if ";" in command else command
         elif name == "uv" and _non_flags(rest)[:1] == ["run"]:
             after_run = rest[rest.index("run") + 1 :]
             positional = _non_flags(after_run, _UV_VALUE_FLAGS)
@@ -331,10 +351,14 @@ def _check_command(tokens: list[str], cwd: str | None, depth: int) -> Decision |
     first = tokens[0]
     name = _program_name(first)
     args = tokens[1:]
-    if name in {"eval", "iex", "invoke-expression"}:
+    if first.startswith("$"):
+        return _ask("Runs a command named by a variable; the guard cannot tell which.")
+    if name in _EVALUATORS:
+        if piped and not args:
+            return _deny(_PIPED_INTO_SHELL)
         return check_shell(" ".join(args), cwd, depth + 1)
     if name in _SHELLS:
-        return _check_shell_invocation(name, args, cwd, depth)
+        return _check_shell_invocation(name, args, cwd, depth, piped)
     rule = _RULES.get(name)
     if rule is not None:
         return rule(args)
@@ -344,15 +368,20 @@ def _check_command(tokens: list[str], cwd: str | None, depth: int) -> Decision |
 
 
 def _check_shell_invocation(
-    name: str, args: list[str], cwd: str | None, depth: int
+    name: str, args: list[str], cwd: str | None, depth: int, piped: bool
 ) -> Decision | None:
-    """bash -c "...", pwsh -Command ..., cmd /c ...: check the inner command or script."""
+    """bash -c "...", pwsh -Command ..., cmd /c ...: check the inner command or script.
+
+    A shell given neither reads its commands from stdin; if that is a pipe, they are unseen.
+    """
     skip = False
     for i, arg in enumerate(args):
         flag = arg.lower()
         if skip:
             skip = False
             continue
+        if arg.startswith("<<<"):  # bash here-string: bash <<< 'az login'
+            return check_shell(arg[3:] or " ".join(args[i + 1 : i + 2]), cwd, depth + 1)
         if name in _POWERSHELLS:
             if flag in _POWERSHELL_VALUE_FLAGS:
                 skip = True
@@ -372,7 +401,7 @@ def _check_shell_invocation(
             return check_shell(" ".join(args[i + 1 :]), cwd, depth + 1)
         if not arg.startswith(("-", "/")):
             return _check_script(arg, cwd, depth)
-    return None
+    return _deny(_PIPED_INTO_SHELL) if piped else None
 
 
 def _check_script(path: str, cwd: str | None, depth: int) -> Decision | None:
@@ -439,7 +468,7 @@ _AZ_CHANGE_VERBS = {
 def _az(args: list[str]) -> Decision | None:
     low = [a.lower() for a in args]
     joined = " ".join(low)
-    if low[:1] == ["login"] or "get-access-token" in low:
+    if "login" in _non_flags(low) or "get-access-token" in low:
         return _deny("Authenticates to Azure or prints an access token.")
     if "keyvault secret" in joined or "keys" in low or "--show-secrets" in low:
         return _deny("Reads or changes secrets or keys in Azure.")
@@ -573,11 +602,38 @@ def _pip(args: list[str]) -> Decision | None:
     return None
 
 
+# Inline code that starts other programs, or names the tools the guard watches.
+_LAUNCHES_PROGRAMS = re.compile(
+    r"subprocess|os\.(?:system|popen|exec|spawn)|child_process|\bpty\b"
+    r"|\b(?:az|terraform|tofu|gh)\b"
+)
+
+
+def _inline_code(args: list[str], code_flags: re.Pattern[str]) -> Decision | None:
+    """python -c CODE, node -e CODE: ask when the code launches programs.
+
+    The guard cannot read code, so this only catches the obvious cases.
+    Interpreter options end at the first positional argument (a script or -m module).
+    """
+    for i, arg in enumerate(args):
+        if code_flags.fullmatch(arg):
+            if _LAUNCHES_PROGRAMS.search(" ".join(args[i + 1 :]).lower()):
+                return _ask("Runs inline code that starts programs; check what it runs.")
+            return None
+        if arg == "-m" or not arg.startswith("-"):
+            return None
+    return None
+
+
 def _python(args: list[str]) -> Decision | None:
     low = [a.lower() for a in args]
     if "-m" in low and low[low.index("-m") + 1 : low.index("-m") + 2] == ["pip"]:
         return _pip(args[low.index("-m") + 2 :])
-    return None
+    return _inline_code(args, re.compile(r"-[A-Za-z]*c"))
+
+
+def _node_eval(args: list[str]) -> Decision | None:
+    return _inline_code(args, re.compile(r"-e|--eval|-p|--print"))
 
 
 _UV_VALUE_FLAGS = frozenset(
@@ -649,6 +705,7 @@ _RULES: dict[str, Rule] = {
     "python": _python,
     "python3": _python,
     "py": _python,
+    "node": _node_eval,
     "uv": _uv,
     "uvx": _install("uvx runs downloaded tools"),
     "npm": _node,
