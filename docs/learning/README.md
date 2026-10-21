@@ -10,6 +10,7 @@ Learning is one of this project's main goals. Notes are organised by **concept**
 | [Terraform](terraform.md) | State, the bootstrap chicken-and-egg, secrets in state, lock files |
 | [Azure identity and access](azure-identity-and-access.md) | Object IDs, RBAC, shared keys, MFA |
 | [Azure cost and resources](azure-cost-and-resources.md) | Pay-as-you-go and budgets, alert testing, regions, soft delete |
+| [Agent guardrails](agent-guardrails.md) | Prompt rules vs enforced rules, hooks, blocklists vs boundaries, failing closed |
 
 [Reflections](reflections.md) holds the per-step learning-log prompts and my own answers.
 

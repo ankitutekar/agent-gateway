@@ -42,3 +42,6 @@ backend.hcl
 .idea/
 .DS_Store
 Thumbs.db
+
+# Claude Code: personal overrides stay local
+.claude/settings.local.json

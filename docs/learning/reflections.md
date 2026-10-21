@@ -21,3 +21,8 @@ One entry per step: the plan's learning-log prompt and my answer, in my own word
 
 **Prompt:** how would an attacker abuse an over-permissioned CI identity, and what did dropping CI access to Azure give up?
 **Answer:**
+
+## Guardrails for the coding agent (2026-10-21)
+
+**Prompt:** what could the coding agent still do that the guard would not catch, and what would close that gap for real?
+**Answer:**

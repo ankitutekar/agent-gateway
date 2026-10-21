@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "additionalDirectories": ["../plan"],
+    "deny": [
+      "Read(**/*.tfstate)",
+      "Read(**/*.tfstate.*)",
+      "Read(**/*.tfplan)",
+      "Read(**/*.tfvars)",
+      "Read(**/backend.hcl)",
+      "Read(**/.env)",
+      "Read(~/.azure/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.ssh/**)",
+      "Edit(**/*.tfstate)",
+      "Edit(**/*.tfstate.*)",
+      "Edit(**/*.tfplan)",
+      "Edit(**/*.tfvars)",
+      "Edit(**/backend.hcl)",
+      "Edit(**/.env)",
+      "Edit(~/.azure/**)",
+      "Edit(~/.config/gh/**)",
+      "Edit(~/.ssh/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Monitor|Read|Edit|Write|NotebookEdit|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}
