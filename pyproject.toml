@@ -11,7 +11,7 @@ dependencies = []
 dev = [
     "pyright==1.1.414",
     "pytest==9.1.1",
-    "ruff==0.17.0",
+    "ruff==0.17.1",
 ]
 
 [build-system]
