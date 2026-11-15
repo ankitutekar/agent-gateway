@@ -8,8 +8,8 @@ Checked through Day 20 on 2026-10-21. Updated as lessons are published.
 
 | Day | Lesson | Question it answers | Google approach | Azure / project approach | Step | Status |
 |---|---|---|---|---|---|---|
-| [1](https://adventofagents.com/2026/10/01) | Agent development lifecycle | What phases does an agent go through, from idea to optimisation? | Five phases, Scope to Optimize | A short scope document per agent | 1.1 | Planned |
-| [2](https://adventofagents.com/2026/10/02) | Threat modeling with SAIF | What can go wrong: injection, rogue tool calls, data disclosure? | Secure AI Framework (SAIF) | `THREAT_MODEL.md` linking each threat to a control and a test | 1.1, 5.6 | Planned |
+| [1](https://adventofagents.com/2026/10/01) | Agent development lifecycle | What phases does an agent go through, from idea to optimisation? | Five phases, Scope to Optimize | A short scope document per agent ([`docs/agents/`](agents/)) | 1.1 | Done |
+| [2](https://adventofagents.com/2026/10/02) | Threat modeling with SAIF | What can go wrong: injection, rogue tool calls, data disclosure? | Secure AI Framework (SAIF) | [`THREAT_MODEL.md`](../THREAT_MODEL.md) linking each threat to a control and a test | 1.1, 5.6 | v1 done (1.1); v2 planned (5.6) |
 | [3](https://adventofagents.com/2026/10/03) | Secure multi-agent architecture | How does a prototype become a hardened production system? | Gemini Enterprise, Agent Gateway | A gateway in front of every tool and model call | 1.5, 3.x | Planned |
 | [4](https://adventofagents.com/2026/10/04) | Governance maturity model | How mature is our agent governance, layer by layer? | 15-item self-assessment across five layers | Scored at the end; baseline skipped (no agents yet, every item would be 0) | 7.7 | Baseline skipped |
 | [5](https://adventofagents.com/2026/10/05) | One identity per agent | How does each agent prove who it is? | SPIFFE identity per agent | Entra Agent ID or a managed identity per agent | 0.5, 3.1, 3.2 | Planned |
