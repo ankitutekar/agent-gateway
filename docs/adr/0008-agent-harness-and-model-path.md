@@ -1,6 +1,6 @@
 # 8. Agent harness and model path
 
-- **Status:** Accepted (smoke-test results to be added when step 1.3 finishes)
+- **Status:** Accepted; smoke-test results added 2026-11-21 (see [Results](#results-of-the-live-smoke-test-2026-11-21))
 - **Date:** 2026-11-19
 
 ## Context
@@ -27,7 +27,7 @@ We commissioned two outside research reports (Claude on the web and Gemini) comp
 | Client | **Plain HTTP** (`httpx`) with our own small typed models for the fields we use. No vendor SDK. |
 | Streaming | Off at first: one complete response per request. |
 | Wire format | OpenRouter **Chat Completions**, behind a `ModelClient` interface in the harness. |
-| Fallback | If Claude features break through Chat Completions (history check, strict tool arguments, pinning), add a second backend for OpenRouter's Anthropic-compatible Messages endpoint and route Claude through it. Agent code does not change. |
+| Fallback | If Claude features break through Chat Completions (history check, strict tool arguments, pinning), add a second backend for OpenRouter's Anthropic-compatible Messages endpoint and route Claude through it. Agent code does not change. *Built and tested in step 1.3; not in use (see Results).* |
 | Model | Claude Sonnet 5.5 to start, with `effort` set explicitly. |
 | Pinning | Every request sends `provider: {only: [...], allow_fallbacks: false, require_parameters: true}` and never a fallback model list. The harness checks the returned `model` and `provider` and fails if they differ. |
 | Data, default route | Pinned to Anthropic; `data_collection: deny`; OpenRouter prompt logging off; OpenRouter zero data retention (ZDR) not enforced. Anthropic's standard retention is an accepted risk (fixtures are synthetic). |
@@ -59,9 +59,31 @@ Rules the harness follows on any route:
 - **Anthropic's OpenAI-compatible endpoint.** Ignores strict tool schemas, returns no reasoning and has no prompt caching.
 - **Foundry-hosted models.** Out of scope for now.
 
+## Results of the live smoke test (2026-11-21)
+
+`sre-agent/scripts/smoke_openrouter.py`, run six times by the maintainer (about $0.40 in total). The last run covered four routes: Anthropic and Bedrock-with-ZDR, each over Chat Completions and over the Messages endpoint. The recordings are in `sre-agent/tests/recordings/openrouter/` and are replayed offline in CI.
+
+| Check | Result |
+|---|---|
+| Two-tool toy task | Completes on all four routes |
+| Pinning | Every reply came from the pinned model and provider (`Anthropic`, `Amazon Bedrock`). When an account setting removed the only allowed provider, the request failed with a 404 naming the reason: nothing was rerouted |
+| Strict tool arguments | Always valid |
+| Usage | Cost and cache-token counts in every response |
+| Thinking | Sonnet 5.5 thinks adaptively and did **not** think on the toy task at medium or high effort. At effort `max`, on a task that needs planning, it thought on both wire formats, and the thinking came back signed even when cut off by `max_tokens` |
+| Cross-provider replay | Thinking from Anthropic's endpoint sent to Bedrock: a clear 400 ("encrypted reasoning … can only be processed by the provider that created it") |
+| Edited history | The unedited history (control) was accepted, and **so was a copy with the readable thinking summary edited**, on both wire formats |
+
+What changed as a result:
+
+- **The Messages-endpoint backend was built** (slice E, `OpenRouterMessagesClient`), when no reasoning came back through Chat Completions. Later runs showed the reason was the model choosing not to think, not a translation problem, so the fallback condition was not actually met. **R1 stays on Chat Completions** (decision D30, 2026-11-21). The Messages backend stays, tested, as a ready fallback. Each reply records its wire format, and a backend refuses history from the other one.
+- **Readable reasoning is not integrity-protected through this path.** With `display: "summarized"`, the readable text is a summary and the real reasoning travels encrypted in the signature. Either the summary is not checked, or the history check is not enforced for requests made through OpenRouter's account; the data cannot tell which (a signature-tamper test is deferred to a later phase). So the gateway enforces append-only history itself: it records assistant turns as received and checks them on replay (step 1.5). Audit records come from provider responses, not from replayed history. Tracked as a risk in the plan, and in threat model v2 (5.6).
+- **Console settings are part of the trust boundary.** Two OpenRouter account settings overrode the code. An account-level "ZDR endpoints only" switch removed Anthropic's endpoint, and a stored bring-your-own Anthropic key (expired) was used instead of OpenRouter's own access. Both were removed. Error bodies also echoed the account's user id, so recordings strip it before they are saved.
+- The harness asks for thinking explicitly (`reasoning.enabled: true` on Chat Completions; `thinking: {type: "adaptive", display: "summarized"}` on Messages), and the Messages backend reads Anthropic's own `thinking_tokens` count.
+
 ## Revisit if
 
-- The smoke test shows Claude's history check or strict tool arguments failing through Chat Completions (switch Claude to the Messages-endpoint backend).
+- The smoke test shows Claude's history check or strict tool arguments failing through Chat Completions (switch Claude to the Messages-endpoint backend, which is built and tested).
+- The edited-history replay test (`test_control_and_edited_history_replay`) starts failing after a re-recording: the provider began checking edited reasoning, and the consequence above changes.
 - Real data, or a policy that rules out a third-party processor, enters the project.
 - A demo needs streamed output, or long responses hit timeouts.
 - OpenRouter's terms or data handling change (it agreed to be acquired by Stripe in August 2026).
